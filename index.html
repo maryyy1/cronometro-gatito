@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Cronómetro de estudio con gatito pixelado: 25 minutos de enfoque y 5 de descanso.">
+<meta name="theme-color" content="#FCE4EC">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gatito">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>Cronómetro Gatito</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Diseño: gatito pixelado a la izquierda y reloj gigante a la derecha en pantalla ancha; en vertical se apilan. Pasteles con bordes escalonados tipo videojuego. */
+:root{
+  --bg:#FCE4EC;
+  --panel:#FFF9FB;
+  --ink:#5A4670;
+  --ink-soft:#76628C;
+  --mint:#A8E6CF;
+  --peach:#FFCBA4;
+  --sky:#B8D8FF;
+  --lilac:#D9C8F5;
+  --empty:#F6E3EC;
+  --mint-soft:#E3F7EE;
+  --peach-soft:#FFEADB;
+  --sky-soft:#E4F0FF;
+  --phase:var(--mint);
+  --phase-soft:var(--mint-soft);
+  --font-display:"Press Start 2P", ui-monospace, "Courier New", monospace;
+  --font-body:"Pixelify Sans", ui-monospace, "Courier New", monospace;
+  color-scheme: light;
+}
+body[data-phase="rest"]{ --phase:var(--peach); --phase-soft:var(--peach-soft); }
+body[data-phase="done"]{ --phase:var(--sky); --phase-soft:var(--sky-soft); }
+
+html{ height:100%; box-sizing:border-box; padding-top:env(safe-area-inset-top, 0px); padding-bottom:env(safe-area-inset-bottom, 0px); }
+*,*::before,*::after{ box-sizing:border-box; }
+body{
+  margin:0; min-height:100%;
+  background:var(--bg); color:var(--ink);
+  font-family:var(--font-body); font-size:16px; line-height:1.4;
+  padding-block:20px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex; justify-content:center; align-items:center;
+}
+.app{ width:100%; max-width:1040px; display:flex; flex-direction:column; gap:28px; }
+
+/* Borde escalonado: las esquinas quedan cortadas como en un videojuego */
+.px{
+  box-shadow: 0 -4px 0 0 var(--ink), 0 4px 0 0 var(--ink), -4px 0 0 0 var(--ink), 4px 0 0 0 var(--ink);
+}
+
+.top{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; padding-inline:4px; }
+h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
+.modes{ display:flex; gap:14px; }
+.chip{
+  font:inherit; font-weight:700; font-size:1.1rem; color:var(--ink); background:var(--panel);
+  border:0; padding:.5rem 1rem; min-height:44px; margin:4px; cursor:pointer;
+}
+.chip[aria-pressed="true"]{ background:var(--ink); color:var(--panel); }
+
+.panel{ background:var(--panel); padding:28px 24px 24px; margin:4px; }
+
+.stage{ display:grid; grid-template-columns:1fr; gap:24px; justify-items:center; text-align:center; }
+.cat-wrap{ background:var(--phase-soft); padding:12px; margin:4px; }
+.cat-wrap canvas{ display:block; width:180px; max-width:100%; aspect-ratio:18/20; image-rendering:pixelated; }
+.clock{ min-width:0; display:flex; flex-direction:column; align-items:center; }
+.pill{
+  display:inline-block; font-family:var(--font-display); font-size:.8rem; letter-spacing:.06em; text-transform:uppercase;
+  background:var(--phase); color:var(--ink); padding:.65rem .9rem; margin:4px;
+}
+.time{
+  font-family:var(--font-display); color:var(--ink); line-height:1.1; white-space:nowrap;
+  font-size:clamp(2.5rem, calc(18vw - 16px), 9rem);
+  text-shadow:6px 6px 0 var(--lilac);
+  margin:18px 0 10px;
+}
+.hint{ margin:0; min-height:1.5em; font-size:1.15rem; color:var(--ink-soft); }
+
+.barwrap{ margin-top:30px; }
+.bar{ display:flex; gap:10px; margin:0 4px; }
+.zone{
+  position:relative; height:24px; background:var(--empty); border:3px solid var(--ink); overflow:hidden;
+  flex:var(--n) 1 0%; min-width:0;
+}
+.zone .fill{ position:absolute; inset:0 auto 0 0; width:0; }
+.zone.study .fill{ background:var(--mint); }
+.zone.rest .fill{ background:var(--peach); }
+.zone::after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:linear-gradient(90deg, transparent calc(100% - 2px), rgba(90,70,112,.28) 0);
+  background-size:calc(100% / var(--n)) 100%;
+}
+.legend{ list-style:none; margin:14px 4px 0; padding:0; display:flex; flex-wrap:wrap; gap:8px 22px; color:var(--ink-soft); font-size:1rem; }
+.legend li{ display:flex; align-items:center; gap:8px; }
+.sw{ display:inline-block; width:16px; height:16px; border:3px solid var(--ink); }
+.sw.study{ background:var(--mint); }
+.sw.rest{ background:var(--peach); }
+
+.task{ display:flex; flex-direction:column; gap:10px; margin:26px 4px 0; }
+.task label{ font-weight:700; font-size:1rem; color:var(--ink-soft); letter-spacing:.03em; }
+.task input{
+  font:inherit; font-size:1.3rem; color:var(--ink); background:#fff;
+  border:0; padding:.7rem .9rem; margin:4px; min-height:52px; width:calc(100% - 8px);
+}
+.task input::placeholder{ color:#9A87AE; }
+
+.controls{ display:flex; flex-wrap:wrap; gap:14px; justify-content:center; margin-top:24px; }
+.btn{
+  font:inherit; font-weight:700; font-size:1.2rem; color:var(--ink); background:var(--lilac);
+  border:0; padding:.7rem 1.4rem; min-height:52px; margin:4px; cursor:pointer;
+  box-shadow: 0 -4px 0 0 var(--ink), 0 4px 0 0 var(--ink), -4px 0 0 0 var(--ink), 4px 0 0 0 var(--ink), inset 0 -6px 0 0 rgba(90,70,112,.16);
+}
+.btn.primary{ background:var(--phase); font-size:1.5rem; padding:.8rem 2.4rem; min-width:190px; }
+.btn.ghost{ background:var(--panel); color:var(--ink-soft); }
+.btn:active, .chip:active{ transform:translateY(3px); }
+:focus-visible{ outline:4px solid var(--ink); outline-offset:7px; }
+
+.wake{ margin:16px 0 0; min-height:1.4em; text-align:center; color:var(--ink-soft); font-size:.95rem; }
+.sr{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+
+.panel.flash{ animation:flash 1.2s steps(1, end) 2; }
+@keyframes flash{ 0%{ background:var(--phase-soft); } 50%{ background:var(--panel); } }
+
+@media (min-width:1000px){
+  .panel{ padding:36px 36px 30px; }
+  .stage{ grid-template-columns:auto minmax(0,1fr); gap:40px; text-align:left; justify-items:stretch; align-items:center; }
+  .cat-wrap canvas{ width:216px; }
+  .clock{ align-items:flex-start; }
+  .time{ font-size:clamp(4rem, calc((100vw - 400px) / 5.4), 8rem); }
+}
+@media (prefers-reduced-motion:reduce){
+  .btn:active, .chip:active{ transform:none; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1>Cronómetro gatito</h1>
+    <div class="modes" role="group" aria-label="Duración del bloque">
+      <button class="chip px" type="button" data-mode="25-5" aria-pressed="true">25 + 5</button>
+      <button class="chip px" type="button" data-mode="30" aria-pressed="false">Solo 30</button>
+    </div>
+  </header>
+
+  <section class="panel px" aria-label="Cronómetro">
+    <div class="stage">
+      <div class="cat-wrap px"><canvas id="cat" width="18" height="20" role="img" aria-label="Gatito pixelado"></canvas></div>
+      <div class="clock">
+        <span class="pill" id="pill">Estudio</span>
+        <div class="time" id="time">25:00</div>
+        <p class="hint" id="hint"></p>
+      </div>
+    </div>
+
+    <div class="barwrap">
+      <div class="bar" id="bar" role="progressbar" aria-label="Avance del bloque" aria-valuemin="0" aria-valuemax="30" aria-valuenow="0"></div>
+      <ul class="legend" id="legend"></ul>
+    </div>
+
+    <div class="task">
+      <label for="tarea">Tarea de este bloque</label>
+      <input id="tarea" class="px" type="text" maxlength="60" placeholder="Ej. 1 módulo de Coursera" autocomplete="off">
+    </div>
+
+    <div class="controls">
+      <button class="btn primary" type="button" id="go">Iniciar</button>
+      <button class="btn" type="button" id="reset">Reiniciar</button>
+      <button class="btn ghost" type="button" id="snd" aria-pressed="true">Sonido: sí</button>
+      <button class="btn ghost" type="button" id="fs" hidden>Pantalla completa</button>
+    </div>
+    <p class="wake" id="wake"></p>
+  </section>
+  <div class="sr" id="live" role="status" aria-live="polite"></div>
+</main>
+
+<script>
+(function(){
+  'use strict';
+  var $ = function(s){ return document.querySelector(s); };
+
+  // Cambia aquí los minutos de estudio y de descanso
+  var MODES = { '25-5': { study: 25, rest: 5 }, '30': { study: 30, rest: 0 } };
+  var modeKey = '25-5';
+  var phase = 'study';      // study | rest | done
+  var started = false, running = false;
+  var remaining = 0, endAt = 0;
+  var soundOn = true, actx = null, wake = null, f = 0, total = 30;
+  var zones = [];
+
+  var timeEl = $('#time'), pillEl = $('#pill'), hintEl = $('#hint'), barEl = $('#bar'), legendEl = $('#legend');
+  var goBtn = $('#go'), resetBtn = $('#reset'), sndBtn = $('#snd'), fsBtn = $('#fs');
+  var wakeEl = $('#wake'), liveEl = $('#live'), tarea = $('#tarea'), panelEl = $('.panel');
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var store = {
+    get: function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+    set: function(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+  };
+  function cfg(){ return MODES[modeKey]; }
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  /* ---------- Gatito pixelado ---------- */
+  var ctx = $('#cat').getContext('2d');
+  var OX = 2, OY = 4;
+  var PAL = { o:'#6B5580', b:'#FFC9A3', w:'#FFF3E4', p:'#FF9DB8', e:'#3F2F4E', h:'#FF7FA1', z:'#8F7BB5' };
+  // Dibujo del gatito: cada letra es un pixel (o contorno, b cuerpo, w panza, p rosa, e ojos)
+  var BASE = [
+    '..............',
+    '.oo........oo.',
+    '.opo......opo.',
+    '.obboooooobbo.',
+    '.obbbbbbbbbbo.',
+    '.obbbbbbbbbbo.',
+    '.obeebbbbeebo.',
+    '.obeebbbbeebo.',
+    '.obbbbppbbbbo.',
+    '.obbbbbbbbbbo.',
+    '..oobbbbbboo..',
+    '...oooooooo...',
+    '..obbbbbbbbo..',
+    '.obbbwwwwbbbo.',
+    '.obbbwwwwbbbo.',
+    '.oooooooooooo.'
+  ];
+  var TAIL_A = [[15,14],[16,14],[16,13],[16,12],[17,11]];
+  var TAIL_B = [[15,14],[16,14],[17,14],[17,13],[17,12]];
+  var HEART = ['.h.h.','hhhhh','.hhh.','..h..'];
+  var ZZ = ['zzz','.z.','zzz'];
+
+  function px(x, y, c){ ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); }
+  function stamp(rows, x0, y0){
+    for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
+      var ch = rows[y][x];
+      if (ch !== '.') px(x0 + x, y0 + y, PAL[ch]);
+    }
+  }
+  function drawCat(){
+    ctx.clearRect(0, 0, 18, 20);
+    var rows = BASE.slice();
+    var blink = !reduce && phase === 'study' && f % 14 === 0;
+    if (phase === 'rest' || blink) rows[6] = '.obbbbbbbbbbo.';
+    stamp(rows, OX, OY);
+    var tf = phase === 'rest' ? (f >> 3) & 1 : (f >> 1) & 1;
+    (tf ? TAIL_B : TAIL_A).forEach(function(p){ px(p[0], p[1] + OY, PAL.o); });
+    if (phase === 'rest') {
+      var zc = (f >> 2) % 3;
+      if (zc >= 1) stamp(ZZ, 12, 2);
+      if (zc >= 2) stamp(ZZ, 15, 0);
+    } else if (phase === 'done') {
+      stamp(HEART, 6, (f & 1) ? 0 : 1);
+    }
+  }
+  if (!reduce) setInterval(function(){ f++; drawCat(); }, 350);
+
+  /* ---------- Sonido ---------- */
+  function ensureAudio(){
+    try {
+      if (!actx) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) actx = new AC(); }
+      if (actx && actx.state === 'suspended') actx.resume();
+    } catch(e){}
+  }
+  function note(freq, at, dur){
+    var o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.22, at + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(at); o.stop(at + dur + 0.02);
+  }
+  var SEQ = { start:[784, 1047], pause:[523], rest:[659, 784, 988], done:[523, 659, 784, 1047], test:[659, 784, 988] };
+  function chime(kind){
+    if (!soundOn) return;
+    try {
+      ensureAudio();
+      if (!actx) return;
+      var seq = SEQ[kind] || SEQ.test;
+      var go = function(){
+        var t = actx.currentTime + 0.03;
+        seq.forEach(function(fq, i){ note(fq, t + i * 0.16, 0.14); });
+      };
+      if (actx.state === 'running') go();
+      else actx.resume().then(go).catch(function(){});
+    } catch(e){}
+  }
+
+  /* ---------- Pantalla encendida ---------- */
+  function requestWake(){
+    try {
+      if ('wakeLock' in navigator && !wake) {
+        navigator.wakeLock.request('screen').then(function(l){
+          wake = l;
+          l.addEventListener('release', function(){ wake = null; render(); });
+          render();
+        }).catch(function(){ wake = null; render(); });
+      }
+    } catch(e){ wake = null; }
+  }
+  function releaseWake(){ try { if (wake) wake.release(); } catch(e){} wake = null; }
+
+  /* ---------- Barra de avance ---------- */
+  function buildBar(){
+    barEl.textContent = ''; legendEl.textContent = ''; zones = [];
+    var c = cfg(), start = 0;
+    var parts = [{ kind:'study', n:c.study, name:'Estudio' }];
+    if (c.rest > 0) parts.push({ kind:'rest', n:c.rest, name:'Descanso' });
+    parts.forEach(function(p){
+      var z = document.createElement('div');
+      z.className = 'zone ' + p.kind;
+      z.style.setProperty('--n', p.n);
+      var fill = document.createElement('div'); fill.className = 'fill';
+      z.appendChild(fill); barEl.appendChild(z);
+      zones.push({ fill: fill, start: start, n: p.n });
+      start += p.n;
+      var li = document.createElement('li');
+      li.innerHTML = '<i class="sw ' + p.kind + '"></i>' + p.name + ' ' + p.n + ' min';
+      legendEl.appendChild(li);
+    });
+    total = start;
+    barEl.setAttribute('aria-valuemax', String(total));
+  }
+  function elapsedMs(){
+    var c = cfg(), s = c.study * 60000, r = c.rest * 60000;
+    if (phase === 'study') return s - remaining;
+    if (phase === 'rest') return s + (r - remaining);
+    return s + r;
+  }
+
+  /* ---------- Estado ---------- */
+  function announce(t){ liveEl.textContent = t; }
+  function flash(){
+    if (reduce) return;
+    panelEl.classList.remove('flash'); void panelEl.offsetWidth; panelEl.classList.add('flash');
+  }
+  panelEl.addEventListener('animationend', function(){ panelEl.classList.remove('flash'); });
+  function reset(){
+    running = false; started = false; phase = 'study';
+    remaining = cfg().study * 60000; endAt = 0;
+    releaseWake(); render();
+  }
+  function setMode(key){
+    modeKey = key;
+    store.set('gc-mode', key);
+    var chips = document.querySelectorAll('.chip');
+    for (var i = 0; i < chips.length; i++) chips[i].setAttribute('aria-pressed', chips[i].getAttribute('data-mode') === key ? 'true' : 'false');
+    buildBar(); reset();
+  }
+  function finish(){
+    running = false; phase = 'done'; remaining = 0; endAt = 0;
+    releaseWake(); chime('done'); flash(); announce('Bloque completo');
+  }
+  function tick(){
+    if (!running) return;
+    remaining = endAt - Date.now();
+    var guard = 0;
+    while (running && remaining <= 0 && guard++ < 3) {
+      if (phase === 'study' && cfg().rest > 0) {
+        phase = 'rest'; endAt += cfg().rest * 60000; remaining = endAt - Date.now();
+        chime('rest'); flash(); announce('Descanso');
+      } else { finish(); }
+    }
+    render();
+  }
+  function toggle(){
+    if (phase === 'done') { reset(); return; }
+    if (running) {
+      remaining = Math.max(0, endAt - Date.now());
+      running = false; releaseWake();
+    } else {
+      started = true; running = true; endAt = Date.now() + remaining;
+      ensureAudio(); requestWake(); chime('start');
+    }
+    if (!running) chime('pause');
+    render();
+  }
+
+  function render(){
+    var s = Math.max(0, Math.ceil(remaining / 1000));
+    timeEl.textContent = pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+    document.body.setAttribute('data-phase', phase);
+    pillEl.textContent = phase === 'study' ? 'Estudio' : phase === 'rest' ? 'Descanso' : 'Listo';
+
+    var hint;
+    if (phase === 'done') hint = 'Bloque completo. Buen trabajo.';
+    else if (phase === 'rest') hint = running ? 'Estira la espalda y toma agua.' : 'Descanso en pausa.';
+    else if (!started) hint = 'Elige una sola tarea y toca Iniciar.';
+    else hint = running ? 'Una cosa a la vez. Tu gatito te acompaña.' : 'En pausa.';
+    hintEl.textContent = hint;
+
+    goBtn.textContent = phase === 'done' ? 'Otra vez' : running ? 'Pausa' : started ? 'Seguir' : 'Iniciar';
+
+    var el = elapsedMs() / 60000;
+    zones.forEach(function(z){
+      z.fill.style.width = (clamp(el - z.start, 0, z.n) / z.n * 100) + '%';
+    });
+    barEl.setAttribute('aria-valuenow', String(Math.floor(el)));
+    barEl.setAttribute('aria-valuetext', Math.floor(el) + ' de ' + total + ' minutos');
+
+    wakeEl.textContent = !running ? '' : wake
+      ? 'La pantalla se mantiene encendida mientras corre.'
+      : 'Si la pantalla se apaga, cambia el bloqueo automático a Nunca.';
+    sndBtn.textContent = 'Sonido: ' + (soundOn ? 'sí' : 'no');
+    sndBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+    drawCat();
+  }
+
+  /* ---------- Eventos ---------- */
+  goBtn.addEventListener('click', toggle);
+  resetBtn.addEventListener('click', reset);
+  sndBtn.addEventListener('click', function(){ soundOn = !soundOn; store.set('gc-sound', soundOn ? '1' : '0'); ensureAudio(); if (soundOn) chime('test'); render(); });
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function(c){
+    c.addEventListener('click', function(){ setMode(c.getAttribute('data-mode')); });
+  });
+  tarea.addEventListener('input', function(){ store.set('gc-tarea', tarea.value); });
+  if (document.fullscreenEnabled) {
+    fsBtn.hidden = false;
+    fsBtn.addEventListener('click', function(){
+      try {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(function(){});
+      } catch(e){}
+    });
+  }
+  document.addEventListener('keydown', function(e){
+    var t = e.target && e.target.tagName;
+    if (e.code === 'Space' && t !== 'INPUT' && t !== 'BUTTON') { e.preventDefault(); toggle(); }
+  });
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') { if (running) requestWake(); tick(); }
+  });
+  setInterval(tick, 250);
+
+  var savedMode = store.get('gc-mode');
+  if (savedMode && MODES[savedMode]) modeKey = savedMode;
+  soundOn = store.get('gc-sound') !== '0';
+  tarea.value = store.get('gc-tarea') || '';
+  setMode(modeKey);
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+</script>
+</body>
+</html>
