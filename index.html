@@ -110,6 +110,22 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
 }
 .task input::placeholder{ color:#9A87AE; }
 
+/* Lista de tareas: casilla, texto (toca para hacerla la tarea activa) y borrar */
+.tasks{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:12px; text-align:left; }
+.tasks li{ display:flex; align-items:stretch; gap:8px; background:#fff; margin:4px; min-height:48px; }
+.tasks li.active{ background:var(--phase-soft); }
+.tasks li.done .t-text{ text-decoration:line-through; color:#9A87AE; }
+.t-btn{ font:inherit; color:var(--ink); background:transparent; border:0; cursor:pointer; min-height:48px; }
+.t-check{ width:48px; flex:none; font-size:1.4rem; font-weight:700; }
+.t-check::before{ content:""; display:block; width:22px; height:22px; margin:auto; border:3px solid var(--ink); background:#fff; }
+.t-check[aria-checked="true"]::before{ content:"✓"; line-height:16px; font-size:1.1rem; background:var(--mint); }
+.t-text{ flex:1; min-width:0; text-align:left; font-size:1.2rem; padding:.4rem .2rem; overflow-wrap:anywhere; }
+.tasks li.active .t-text{ font-weight:700; }
+.tasks li.active .t-text::before{ content:"▶ "; color:var(--ink-soft); }
+.t-del{ width:48px; flex:none; font-size:1.2rem; font-weight:700; color:var(--ink-soft); }
+.t-btn:hover{ background:rgba(217,200,245,.35); }
+.tasks-empty{ margin:6px 4px 0; color:var(--ink-soft); font-size:1rem; }
+
 .controls{ display:flex; flex-wrap:wrap; gap:14px; justify-content:center; margin-top:24px; }
 .btn{
   font:inherit; font-weight:700; font-size:1.2rem; color:var(--ink); background:var(--lilac);
@@ -165,8 +181,10 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
     </div>
 
     <div class="task">
-      <label for="tarea">Tarea de este bloque</label>
-      <input id="tarea" class="px" type="text" maxlength="60" placeholder="Ej. 1 módulo de Coursera" autocomplete="off">
+      <label for="tarea">Tareas (Enter para agregar)</label>
+      <input id="tarea" class="px" type="text" maxlength="60" placeholder="Ej. 1 módulo de Coursera" autocomplete="off" enterkeyhint="done">
+      <ul class="tasks" id="tasks"></ul>
+      <p class="tasks-empty" id="tasks-empty">Aún no hay tareas. Escribe una y presiona Enter.</p>
     </div>
 
     <div class="controls">
@@ -334,6 +352,83 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
     return s + r;
   }
 
+  /* ---------- Lista de tareas ---------- */
+  var tasks = [], activeId = null;
+  var tasksEl = $('#tasks'), emptyEl = $('#tasks-empty');
+
+  function loadTasks(){
+    try {
+      var d = JSON.parse(store.get('gc-tareas') || '[]');
+      if (Array.isArray(d)) tasks = d.filter(function(t){ return t && typeof t.text === 'string' && t.id; });
+    } catch(e){ tasks = []; }
+    activeId = store.get('gc-activa');
+    // Migración: si había una tarea escrita en la versión anterior, pasa a la lista
+    var old = store.get('gc-tarea');
+    if (old && old.trim() && !tasks.length) tasks.push({ id: newId(), text: old.trim(), done: false });
+    store.set('gc-tarea', '');
+    pickActive();
+  }
+  function saveTasks(){
+    store.set('gc-tareas', JSON.stringify(tasks));
+    store.set('gc-activa', activeId || '');
+  }
+  function newId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function findTask(id){ for (var i = 0; i < tasks.length; i++) if (tasks[i].id === id) return tasks[i]; return null; }
+  function activeTask(){ var t = findTask(activeId); return t && !t.done ? t : null; }
+  // Mantiene una tarea activa válida: la elegida, o si no, la primera pendiente
+  function pickActive(){
+    if (activeTask()) return;
+    var next = null;
+    for (var i = 0; i < tasks.length; i++) if (!tasks[i].done) { next = tasks[i]; break; }
+    activeId = next ? next.id : null;
+  }
+  function addTask(text){
+    text = text.trim();
+    if (!text) return;
+    tasks.push({ id: newId(), text: text, done: false });
+    pickActive(); saveTasks(); renderTasks();
+  }
+  function toggleTask(id){
+    var t = findTask(id); if (!t) return;
+    t.done = !t.done;
+    pickActive(); saveTasks(); renderTasks();
+  }
+  function removeTask(id){
+    tasks = tasks.filter(function(t){ return t.id !== id; });
+    pickActive(); saveTasks(); renderTasks();
+  }
+  function setActive(id){
+    var t = findTask(id);
+    if (!t || t.done) return;
+    activeId = id; saveTasks(); renderTasks();
+  }
+  function renderTasks(){
+    tasksEl.textContent = '';
+    emptyEl.hidden = tasks.length > 0;
+    tasks.forEach(function(t){
+      var li = document.createElement('li');
+      li.className = 'px' + (t.done ? ' done' : '') + (t.id === activeId ? ' active' : '');
+      var chk = document.createElement('button');
+      chk.type = 'button'; chk.className = 't-btn t-check';
+      chk.setAttribute('role', 'checkbox');
+      chk.setAttribute('aria-checked', t.done ? 'true' : 'false');
+      chk.setAttribute('aria-label', 'Hecha: ' + t.text);
+      chk.addEventListener('click', function(){ toggleTask(t.id); });
+      var txt = document.createElement('button');
+      txt.type = 'button'; txt.className = 't-btn t-text';
+      txt.textContent = t.text;
+      txt.title = 'Usar como tarea activa';
+      txt.addEventListener('click', function(){ setActive(t.id); });
+      var del = document.createElement('button');
+      del.type = 'button'; del.className = 't-btn t-del';
+      del.textContent = '✕';
+      del.setAttribute('aria-label', 'Borrar: ' + t.text);
+      del.addEventListener('click', function(){ removeTask(t.id); });
+      li.appendChild(chk); li.appendChild(txt); li.appendChild(del);
+      tasksEl.appendChild(li);
+    });
+  }
+
   /* ---------- Estado ---------- */
   function announce(t){ liveEl.textContent = t; }
   function flash(){
@@ -355,7 +450,11 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
   }
   function finish(){
     running = false; phase = 'done'; remaining = 0; endAt = 0;
-    releaseWake(); chime('done'); flash(); announce('Bloque completo');
+    releaseWake(); chime('done'); flash();
+    // Al terminar el bloque de estudio se marca la tarea activa como hecha
+    var t = activeTask();
+    if (t) { t.done = true; pickActive(); saveTasks(); renderTasks(); }
+    announce(t ? 'Bloque completo. Tarea hecha: ' + t.text : 'Bloque completo');
   }
   function tick(){
     if (!running) return;
@@ -419,7 +518,14 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
   Array.prototype.forEach.call(document.querySelectorAll('.chip'), function(c){
     c.addEventListener('click', function(){ setMode(c.getAttribute('data-mode')); });
   });
-  tarea.addEventListener('input', function(){ store.set('gc-tarea', tarea.value); });
+  // Enter agrega la tarea (se ignora mientras se compone texto con IME)
+  tarea.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      addTask(tarea.value);
+      tarea.value = '';
+    }
+  });
   if (document.fullscreenEnabled) {
     fsBtn.hidden = false;
     fsBtn.addEventListener('click', function(){
@@ -441,7 +547,7 @@ h1{ margin:0; font-size:1.35rem; font-weight:700; letter-spacing:.04em; }
   var savedMode = store.get('gc-mode');
   if (savedMode && MODES[savedMode]) modeKey = savedMode;
   soundOn = store.get('gc-sound') !== '0';
-  tarea.value = store.get('gc-tarea') || '';
+  loadTasks(); renderTasks();
   setMode(modeKey);
 })();
 </script>
